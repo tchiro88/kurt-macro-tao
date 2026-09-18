@@ -66,6 +66,7 @@ fn webpage_url_string(user_activity: &NSUserActivity) -> Option<String> {
 pub(crate) fn emit_opened(url_strings: &[String], source: &str) {
   let urls = parse_url_strings(url_strings, source);
   if !urls.is_empty() {
+    log::debug!("emitting Opened with {} URL(s) from {source}", urls.len());
     unsafe {
       app_state::handle_nonuser_event(EventWrapper::StaticEvent(Event::Opened { urls }));
     }
@@ -265,6 +266,9 @@ fn parse_url_strings(url_strings: &[String], source: &str) -> Vec<url::Url> {
     })
     .collect()
 }
+
+#[cfg(test)]
+mod test;
 
 #[cfg(test)]
 mod tests {
