@@ -14,7 +14,10 @@ use std::{
 };
 
 use objc2::{rc::Retained, runtime::AnyObject, MainThreadMarker, Message};
-use objc2_ui_kit::{UIApplication, UIScene, UISceneConnectionOptions, UIWindowScene};
+use objc2_foundation::{NSSet, NSUserActivity};
+use objc2_ui_kit::{
+  UIApplication, UIOpenURLContext, UIScene, UISceneConnectionOptions, UIWindowScene,
+};
 
 use crate::{
   dpi::LogicalSize,
@@ -28,7 +31,10 @@ use crate::{
       CFRunLoopTimerRef, CFRunLoopTimerSetNextFireDate, CGRect, CGSize, NSInteger,
       NSOperatingSystemVersion, NSUInteger,
     },
-    scene::scene_lifecycle_enabled,
+    scene::{
+      emit_opened, scene_lifecycle_enabled, url_strings_from_url_contexts,
+      url_strings_from_user_activities,
+    },
   },
   window::WindowId as RootWindowId,
 };
@@ -561,6 +567,23 @@ pub unsafe fn connect_scene(scene: &UIScene, options: &UISceneConnectionOptions)
       let () = msg_send![window, release];
     }
   }
+
+  // on cold start every deep link arrives here instead of through the callbacks
+  // that handle them while the app is running: custom schemes and file URLs in
+  // the URL contexts, universal links in the user activities, since
+  // scene:continueUserActivity: is not called for the launch activity
+  // UIKit can return nil despite its nonnull annotations, including on a
+  // normal launch without a URL. The generated accessors would panic.
+  let url_contexts: Option<Retained<NSSet<UIOpenURLContext>>> = msg_send![options, URLContexts];
+  let user_activities: Option<Retained<NSSet<NSUserActivity>>> = msg_send![options, userActivities];
+  let mut url_strings = Vec::new();
+  if let Some(contexts) = url_contexts {
+    url_strings.extend(url_strings_from_url_contexts(&contexts));
+  }
+  if let Some(activities) = user_activities {
+    url_strings.extend(url_strings_from_user_activities(&activities));
+  }
+  emit_opened(&url_strings, "scene:willConnectToSession:options:");
 }
 
 pub unsafe fn register_window_for_scene(window: id) {
